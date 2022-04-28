@@ -1,6 +1,7 @@
 from numpy import average
 import pyodbc as db
 import csv
+from myEnums import *
 
 USER = 'db_user'
 PASS = 'sqlpassword'
@@ -53,33 +54,81 @@ def average_movie_runtime(cursor: db.Cursor):
     with cursor.execute(sql):
         return cursor.fetchval()
 
-def pipeline(cursor: db.Cursor, country: str, type: str, time_period: str, rating: str, duration: str):
-    sql = f"SELECT title, listed_in FROM Media WHERE type='{type}'"
-    if country:
+def get_keywords_with_media(obj):
+
+    result = []
+    for media in obj:
+        # TODO get keywords and add to this object
+
+        result.append({
+            "title": media[0],
+            "director": media[1],
+            "cast": [actor.strip() for actor in media[2].split(",")],
+            "release_year": media[3],
+            "rating": media[4],
+            "duration": media[5],
+            "genres": [genre.strip() for genre in media[6].split(",")],
+            "description": media[7]
+        })
+    return result
+
+def pipeline(country: str, media_type: Type, time_period: Time_Period, rating: str, duration: Duration, genre: str = None):
+    cursor = init_db()
+    sql = ""
+    media_type = "TV Show" if media_type == Type.TV_SHOW.value else "Movie"
+    if genre is not None:
+        sql += f"SELECT title, director, cast, release_year, rating, duration, listed_in, description FROM Media WHERE type='{media_type}' AND listed_in LIKE '%{genre}%'"
+    else:
+        sql += f"SELECT DISTINCT TRIM(cs.Value) AS value FROM Media CROSS APPLY STRING_SPLIT(listed_in, ',') cs WHERE type='{media_type}'"
+    if country is not None:
         sql += f" AND country='{country}'"
-    if time_period:
-        if time_period == '2000s': 
+    if time_period is not None:
+        if time_period == Time_Period.TWO_THOUSANDS.value: 
             sql += f" AND CAST(release_year AS INT) >= 2000 AND CAST(release_year AS INT) < 2020"
-        elif time_period == 'new':
+        elif time_period == Time_Period.NEW.value:
             sql += f" AND CAST(release_year AS INT) >= 2020"
-        else:
+        elif time_period == Time_Period.PRE_TWO_THOUSANDS.value:
             sql += f" AND CAST(release_year AS INT) < 2000"
-    if rating and rating != "adult":
-        if rating == "kid":
-            if type == "Movie":
+    if rating is not None and rating != Rating.ADULT.value:
+        if rating == Rating.KID.value:
+            if media_type == "Movie":
                 sql += f" AND NOT rating = 'PG-13' AND NOT rating = 'UR' AND NOT rating = 'NR' AND NOT rating = 'R'"
             else:
                 sql += f" AND NOT rating = 'TV-MA' AND NOT rating = 'TV-14'"
-        if rating == "teenager":
-            if type == "Movie":
+        if rating == Rating.TEEN.value:
+            if media_type == "Movie":
                 sql += f" AND NOT rating = 'UR' AND NOT rating = 'NR' AND NOT rating = 'R'"
             else:
                 sql += f" AND NOT rating = 'TV-MA'"
-    print(sql)
-        
+    if duration is not None:
+        if media_type == Type.TV_SHOW.value:
+            if duration == Duration.ONE_OR_TWO_SEASONS.value:
+                sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) < 3"
+            elif duration == Duration.THREE_OR_MORE_SEASONS.value:
+                sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) >= 3"
+        elif media_type == Type.MOVIE.value:
+            if duration == Duration.LESS_THAN_60_MIN.value:
+                sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) < 60"
+            elif duration == Duration.HOUR_TO_90_MIN.value:
+                sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) > 60"
+            elif duration == Duration.MORE_THAN_90_MIN.value:
+                sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) > 90"
+    if not genre:
+        sql += f" ORDER BY value ASC"
+    try:
+        with cursor.execute(sql):
+            result = [list(row) for row in cursor.fetchall()]
+    except db.Error as err:
+        return {"error": err}
+    finally:
+        cursor.close()
+    if genre:
+        return get_keywords_with_media(result)
+    else:
+        return result
 
 if __name__ == '__main__':
-    cursor = init_db()
     # create_media_table(cursor)
     # save_csv_to_db(cursor)
-    print(pipeline(cursor, "United States", "TV Show", "2000+", "Teenage", None))
+    result = pipeline("United States", Type.TV_SHOW, Time_Period.NEW, Rating.ADULT, Duration.THREE_OR_MORE_SEASONS, 'Docuseries')
+    print(result)
