@@ -1,10 +1,14 @@
 from flask import Flask, request, Response, jsonify
+from flask_cors import CORS, cross_origin
 import database as db
 
 app = Flask(__name__)
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
 app.run()
 
 @app.route('/pipeline', methods=["GET"])
+@cross_origin()
 def pipeline():
     country = request.args.get("country")
     media_type = int(request.args.get("type"))
