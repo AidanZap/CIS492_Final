@@ -1,4 +1,3 @@
-from numpy import average
 import pyodbc as db
 import csv
 from myEnums import *
@@ -58,7 +57,19 @@ def get_keywords_with_media(obj):
 
     result = []
     for media in obj:
-        # TODO get keywords and add to this object
+        # Keywords are hardcoded for demo, future project could be generating from reviews
+        keywords = None
+        if media[0].lower().strip() == "explained":
+            keywords = 'informative, ideas, entertaining, interest, topics'
+        elif media[0].lower().strip() == "meateater":
+            keywords = 'adventure, steve, hunt, fishing, guide'
+        elif media[0].lower().strip() == "somebody feed phil":
+            keywords = 'delightful, culinary, vicariously, joyful, adventure'
+        elif media[0].lower().strip() == 'the chef show':
+            keywords = 'cooking, cinnamon, pepperpot, traditional, dish'
+        elif media[0].lower().strip() == "last chance u":
+            keywords = 'students, hope, motivated, collegiate, young'
+
 
         result.append({
             "title": media[0],
@@ -68,7 +79,8 @@ def get_keywords_with_media(obj):
             "rating": media[4],
             "duration": media[5],
             "genres": [genre.strip() for genre in media[6].split(",")],
-            "description": media[7]
+            "description": media[7],
+            "keywords": keywords
         })
     return result
 
@@ -80,33 +92,27 @@ def pipeline(country: str, media_type: Type, time_period: Time_Period, rating: s
         sql += f"SELECT title, director, cast, release_year, rating, duration, listed_in, description FROM Media WHERE type='{media_type}' AND listed_in LIKE '%{genre}%'"
     else:
         sql += f"SELECT DISTINCT TRIM(cs.Value) AS value FROM Media CROSS APPLY STRING_SPLIT(listed_in, ',') cs WHERE type='{media_type}'"
-    if country is not None:
+    if country is not None and country != "0":
         sql += f" AND country='{country}'"
-    if time_period is not None:
+    if time_period:
         if time_period == Time_Period.TWO_THOUSANDS.value: 
             sql += f" AND CAST(release_year AS INT) >= 2000 AND CAST(release_year AS INT) < 2020"
         elif time_period == Time_Period.NEW.value:
             sql += f" AND CAST(release_year AS INT) >= 2020"
         elif time_period == Time_Period.PRE_TWO_THOUSANDS.value:
             sql += f" AND CAST(release_year AS INT) < 2000"
-    if rating is not None and rating != Rating.ADULT.value:
+    if rating and rating != Rating.ADULT.value:
         if rating == Rating.KID.value:
-            if media_type == "Movie":
-                sql += f" AND NOT rating = 'PG-13' AND NOT rating = 'UR' AND NOT rating = 'NR' AND NOT rating = 'R'"
-            else:
-                sql += f" AND NOT rating = 'TV-MA' AND NOT rating = 'TV-14'"
+            sql += f" AND NOT rating = 'PG-13' AND NOT rating = 'UR' AND NOT rating = 'NR' AND NOT rating = 'R' AND NOT rating = 'TV-MA' AND NOT rating = 'TV-14'"
         if rating == Rating.TEEN.value:
-            if media_type == "Movie":
-                sql += f" AND NOT rating = 'UR' AND NOT rating = 'NR' AND NOT rating = 'R'"
-            else:
-                sql += f" AND NOT rating = 'TV-MA'"
-    if duration is not None:
-        if media_type == Type.TV_SHOW.value:
+            sql += f" AND NOT rating = 'UR' AND NOT rating = 'NR' AND NOT rating = 'R' AND NOT rating = 'TV-MA'"
+    if duration:
+        if media_type == "TV Show":
             if duration == Duration.ONE_OR_TWO_SEASONS.value:
                 sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) < 3"
             elif duration == Duration.THREE_OR_MORE_SEASONS.value:
                 sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) >= 3"
-        elif media_type == Type.MOVIE.value:
+        elif media_type == "Movie":
             if duration == Duration.LESS_THAN_60_MIN.value:
                 sql += f" AND CAST(SUBSTRING(duration,1,(CHARINDEX(' ',duration + ' ')-1)) AS INT) < 60"
             elif duration == Duration.HOUR_TO_90_MIN.value:
